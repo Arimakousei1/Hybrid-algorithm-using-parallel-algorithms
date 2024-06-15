@@ -1,0 +1,1 @@
+We used an integrated machine learning approach, integrated by Bayesian inference, was employed to screen a commercial dataset of 70413 molecules, identifying candidates that selectively and efficiently bind with EGFR harboring T790M mutation.
