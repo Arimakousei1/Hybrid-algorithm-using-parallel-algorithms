@@ -1,0 +1,170 @@
+from DeepPurpose import utils, dataset, CompoundPred
+import pandas as pd
+import numpy as np
+from sklearn.metrics import mean_squared_error, roc_auc_score, average_precision_score, f1_score, accuracy_score
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import roc_curve, auc, classification_report, matthews_corrcoef
+from matplotlib import pyplot as plt
+import warnings
+from sklearn.feature_extraction import DictVectorizer
+from sklearn import svm
+from xgboost import XGBClassifier
+from sklearn.naive_bayes import BernoulliNB
+from sklearn.neighbors import KNeighborsClassifier
+import matplotlib.pyplot as plt
+import joblib
+warnings.filterwarnings("ignore")
+
+#Data pre
+data1 = pd.read_csv('train2.csv')
+x1 = data1['smiles']
+y1 = data1['Label']
+x_train1, x_test1, y_train1, y_test1 = train_test_split(x1, y1, random_state=42, test_size=0.3)
+
+#选择药物编码的方式，训练集、测试集的划分
+drug_encoding = 'Morgan'
+train = utils.data_process(X_drug = x_train1, y = y_train1, drug_encoding = drug_encoding,
+                                    split_method='no_split', 
+                                    random_seed = 1)
+
+test = utils.data_process(X_drug = x_test1, y = y_test1, drug_encoding = drug_encoding,
+                                    split_method='no_split', 
+                                    random_seed = 1)
+
+#模型参数的设置、初始化及运行（ECPF指纹）
+config = utils.generate_config(drug_encoding = drug_encoding, 
+                         cls_hidden_dims = [1024,1024,512], 
+                         train_epoch = 100, 
+                         LR = 0.001, 
+                         batch_size = 128
+                        )
+model1 = CompoundPred.model_initialize(**config)
+model1.train(train, test, test)
+
+#分类表格结果
+y_pre = model1.predict(test)
+y_pred = np.around(y_pre)
+mse = mean_squared_error(y_test, y_pred)
+mcc = matthews_corrcoef(y_test, y_pred)
+class_report = classification_report(y_test, y_pred, target_names=["Inactive", "Active"])
+ACC = accuracy_score(y_test, y_pred, normalize=True, sample_weight=None)
+
+print('MSE_DP:', mse)
+print('MCC_DP:', mcc)
+print('Accuracy_DP:', ACC)
+print('DP_classification_report:', class_report)
+
+data2 = pd.read_csv('Train2_finger.csv')
+x2 = data2.iloc[:, 0:-1]
+y2 = data2['Label']
+x_train, x_test, y_train, y_test = train_test_split(x2, y2, random_state=42, test_size=0.3)
+
+#SVM
+model2 = svm.SVC(C=1.0, gamma='auto', tol=0.001, max_iter=-1, decision_function_shape='ovr', probability=True, random_state=42)
+model2.fit(x_train, y_train)
+y_pre1 = model2.predict(x_test)
+ret1 = model2.score(x_test, y_test)
+mse1 = mean_squared_error(y_test, y_pre1)
+mcc1 = matthews_corrcoef(y_test, y_pre1)
+class_report1 = classification_report(y_test, y_pre1, target_names=["Inactive", "Active"])
+ACC2 = accuracy_score(y_test, y_pre1, normalize=True, sample_weight=None)
+
+print('SVM_score:', ret1)
+print('SVM_classification_report:', class_report1)
+print('MSE_SVM:', mse1)
+print('MCC_SVM:', mcc1)
+print('Accuracy_SVM:', ACC2)
+
+#Naive Bayes
+nbm = BernoulliNB(alpha=1, fit_prior=True)
+nbm.fit(x_train, y_train)
+y_pre3 = nbm.predict(x_test)
+ret3 = nbm.score(x_test, y_test)
+mse3 = mean_squared_error(y_test, y_pre3)
+mcc3 = matthews_corrcoef(y_test, y_pre3)
+class_report3 = classification_report(y_test, y_pre3, target_names=["Inactive", "Active"])
+ACC3 = accuracy_score(y_test, y_pre3, normalize=True, sample_weight=None)
+
+print('NB_score:', ret3)
+print('NB_classification_report:', class_report3)
+print('MSE_NB:', mse3)
+print('MCC_NB:', mcc3)
+print('Accuracy_NB:', ACC3)
+
+#KNN
+knn = KNeighborsClassifier(n_neighbors=10)
+knn.fit(x_train, y_train)
+y_pre4 = knn.predict(x_test)
+ret4 = knn.score(x_test, y_test)
+mse4 = mean_squared_error(y_test, y_pre4)
+mcc4 = matthews_corrcoef(y_test, y_pre4)
+class_report4 = classification_report(y_test, y_pre4, target_names=["Inactive", "Active"])
+ACC4 = accuracy_score(y_test, y_pre4, normalize=True, sample_weight=None)
+
+print('KNN_score:', ret4)
+print('KNN_classification_report:', class_report4)
+print('MSE_KNN:', mse4)
+print('MCC_KNN:', mcc4)
+print('Accuracy_KNN:', ACC4)
+
+#XG_Boost
+x_train = x_train.to_dict(orient='records')
+x_test = x_test.to_dict(orient='records')
+transfer = DictVectorizer()
+x_train = transfer.fit_transform(x_train)
+x_test = transfer.fit_transform(x_test)
+bst = XGBClassifier(max_depth=4, learning_rate=0.01, silent=True, objective='binary:logistic')
+bst.fit(x_train, y_train)
+y_pre2 = bst.predict(x_test)
+ret2 = bst.score(x_test, y_test)
+mse2 = mean_squared_error(y_test, y_pre2)
+mcc2 = matthews_corrcoef(y_test, y_pre2)
+class_report2 = classification_report(y_test, y_pre2, target_names=["Inactive", "Active"])
+ACC5 = accuracy_score(y_test, y_pre2, normalize=True, sample_weight=None)
+
+print('XGB_score:', ret2)
+print('XGB_classification_report:', class_report2)
+print('MSE_XGB:', mse2)
+print('MCC_XGB:', mcc2)
+print('Accuracy_XGB:', ACC5)
+
+#ROC
+plt.figure(figsize=(10, 10))
+fpr1, tpr1, threshholds1 = roc_curve(y_test1, model1.predict(test))
+roc_auc1 = auc(fpr1, tpr1)
+plt.plot(fpr1, tpr1, color='mediumvioletred', lw=3, label='MLP (AUC = %0.2f)' % roc_auc1)
+
+model2.fit(x_train, y_train)
+y_test_predprob2 = model2.predict_proba(x_test)[:,1]
+fpr2, tpr2, thresholds2 = roc_curve(y_test, y_test_predprob2, pos_label=1)
+roc_auc2 = auc(fpr2, tpr2)
+plt.plot(fpr2, tpr2, color='crimson', lw=3, label='SVM (AUC = %0.2f)' % roc_auc2)
+
+nbm.fit(x_train, y_train)
+y_test_predprob3 = nbm.predict_proba(x_test)[:,1]
+fpr3, tpr3, thresholds3 = roc_curve(y_test, y_test_predprob3, pos_label=1)
+roc_auc3 = auc(fpr3, tpr3)
+plt.plot(fpr3, tpr3, color='orange', lw=3, label='Naive Bayes (AUC = %0.2f)' % roc_auc3)
+
+knn.fit(x_train, y_train)
+y_test_predprob4 = knn.predict_proba(x_test)[:,1]
+fpr4, tpr4, thresholds4 = roc_curve(y_test, y_test_predprob4, pos_label=1)
+roc_auc4 = auc(fpr4, tpr4)
+plt.plot(fpr4, tpr4, color='limegreen', lw=3, label='KNN (AUC = %0.2f)' % roc_auc4)
+
+bst.fit(x_train, y_train)
+y_test_predprob5 = bst.predict_proba(x_test)[:,1]
+fpr5, tpr5, thresholds5 = roc_curve(y_test, y_test_predprob5, pos_label=1)
+roc_auc5 = auc(fpr5, tpr5)
+plt.plot(fpr5, tpr5, color='royalblue', lw=3, label='XGBoost (AUC = %0.2f)' % roc_auc5)
+
+plt.plot([0, 1], [0, 1], color='grey', lw=2, linestyle='--')
+plt.axis('square')
+plt.xlim([-0.05, 1.05])
+plt.ylim([-0.05, 1.05])
+plt.xlabel('1-Specificity', fontsize=16)
+plt.ylabel('Sensitivity', fontsize=16)
+plt.title('ROC Curve',fontsize=20)
+plt.legend(loc="lower right")
+plt.savefig('./DeepPurpose', dpi=600)
+plt.show()

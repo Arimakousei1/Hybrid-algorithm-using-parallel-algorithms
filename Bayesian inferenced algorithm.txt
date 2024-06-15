@@ -1,0 +1,112 @@
+clear all;clc;close all
+
+% 加载数据
+data = readtable('data.csv'); % 假设CSV文件包含两列：'SMILES'和'IC50'
+
+% 将IC50转换为分类标签，假设小于30为活性（1），否则为非活性（0）
+labels = data.IC50 < 30;
+
+% 将SMILES转换为特征向量
+features = [];
+for i = 1:height(data)
+    features(i, :) = smiles2features(data.SMILES{i});
+end
+
+% 拆分训练和测试数据
+cv = cvpartition(labels, 'HoldOut', 0.2);
+XTrain = features(training(cv), :);
+YTrain = labels(training(cv));
+XTest = features(test(cv), :);
+YTest = labels(test(cv));
+
+% 优化并训练SVM
+svmModel = fitcsvm(XTrain, YTrain, 'KernelFunction', 'RBF', ...
+    'OptimizeHyperparameters', 'all', ...
+    'HyperparameterOptimizationOptions', struct('AcquisitionFunctionName', ...
+    'expected-improvement-plus'));
+
+% 优化并训练Naive Bayes
+nbModel = fitcnb(XTrain, YTrain, ...
+    'OptimizeHyperparameters', 'all', ...
+    'HyperparameterOptimizationOptions', struct('AcquisitionFunctionName', ...
+    'expected-improvement-plus'));
+
+% 优化并训练k-NN
+knnModel = fitcknn(XTrain, YTrain, ...
+    'OptimizeHyperparameters', 'all', ...
+    'HyperparameterOptimizationOptions', struct('AcquisitionFunctionName', ...
+    'expected-improvement-plus'));
+
+% 优化并训练XGB
+xgbModel = fitensemble(XTrain, YTrain, 'Bag', 100, 'Tree', ...
+    'Type', 'Classification', 'OptimizeHyperparameters', 'all', ...
+    'HyperparameterOptimizationOptions', struct('AcquisitionFunctionName', ...
+    'expected-improvement-plus'));
+
+% 优化并训练MLP
+mlpModel = fitnet(10);
+mlpModel = train(mlpModel, XTrain', YTrain');
+
+% 预测
+svmPred = predict(svmModel, XTest);
+nbPred = predict(nbModel, XTest);
+knnPred = predict(knnModel, XTest);
+xgbPred = predict(xgbModel, XTest);
+mlpPred = mlpModel(XTest')';
+
+% 将五种模型的预测结果进行贝叶斯整合
+combinedPred = bayesianInference([svmPred, nbPred, knnPred, xgbPred, mlpPred]);
+
+% 评估模型性能
+accuracy = sum(combinedPred == YTest) / length(YTest);
+disp(['Model Accuracy: ', num2str(accuracy)]);
+
+% 使用训练好的模型进行预测
+newSmiles = 'CCO'; % 示例SMILES字符串
+newFeatures = smiles2features(newSmiles);
+newPred = bayesianInference([
+    predict(svmModel, newFeatures), 
+    predict(nbModel, newFeatures), 
+    predict(knnModel, newFeatures),
+    predict(xgbModel, newFeatures),
+    mlpModel(newFeatures')
+]);
+
+disp(['Predicted Activity: ', num2str(newPred)]);
+
+
+
+function features = smiles2features(smiles)
+    % 元素周期表中常见的元素
+    elements = {'H', 'He', 'Li', 'Be', 'B', 'C', 'N', 'O', 'F', 'Ne', ...
+                'Na', 'Mg', 'Al', 'Si', 'P', 'S', 'Cl', 'Ar', ...
+                'K', 'Ca', 'Sc', 'Ti', 'V', 'Cr', 'Mn', 'Fe', ...
+                'Co', 'Ni', 'Cu', 'Zn', 'Ga', 'Ge', 'As', 'Se', ...
+                'Br', 'Kr', 'Rb', 'Sr', 'Y', 'Zr', 'Nb', 'Mo', ...
+                'Tc', 'Ru', 'Rh', 'Pd', 'Ag', 'Cd', 'In', 'Sn', ...
+                'Sb', 'Te', 'I', 'Xe', 'Cs', 'Ba', 'La', 'Ce', ...
+                'Pr', 'Nd', 'Pm', 'Sm', 'Eu', 'Gd', 'Tb', 'Dy', ...
+                'Ho', 'Er', 'Tm', 'Yb', 'Lu', 'Hf', 'Ta', 'W', ...
+                'Re', 'Os', 'Ir', 'Pt', 'Au', 'Hg', 'Tl', 'Pb', ...
+                'Bi', 'Po', 'At', 'Rn', 'Fr', 'Ra', 'Ac', 'Th', ...
+                'Pa', 'U', 'Np', 'Pu', 'Am', 'Cm', 'Bk', 'Cf', ...
+                'Es', 'Fm', 'Md', 'No', 'Lr', 'Rf', 'Db', 'Sg', ...
+                'Bh', 'Hs', 'Mt', 'Ds', 'Rg', 'Cn', 'Nh', 'Fl', ...
+                'Mc', 'Lv', 'Ts', 'Og'};
+
+    % 初始化特征向量
+    features = zeros(1, length(elements) + 2); % 加两个位置用于共价键和π键
+
+    % 计算各元素的数量
+    for i = 1:length(elements)
+        features(i) = count(smiles, elements{i});
+    end
+
+    % 计算共价键数量（假设单键、双键、三键为共价键）
+    covalentBonds = count(smiles, '-') + count(smiles, '=') + count(smiles, '#');
+    features(end-1) = covalentBonds;
+
+    % 计算π键数量（假设双键和三键为π键）
+    piBonds = count(smiles, '=') + count(smiles, '#');
+    features(end) = piBonds;
+end
