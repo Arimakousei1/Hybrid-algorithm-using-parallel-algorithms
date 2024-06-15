@@ -1,0 +1,24 @@
+import rdkit
+from rdkit import Chem
+import deepchem as dc
+import numpy as np
+
+smiles = [
+  'CN(C)CCN(C)C1=CC(=C(C=C1NC(=O)C=C)NC2=NC=CC(=N2)C3=CN(C4=CC=CC=C43)C5CC5)OC',
+  'CN1CCC[C@H]1c2cccnc2',
+  'C1CCCCC1',
+]
+SIMLES =[]
+for smile in smiles:
+    SIMLES.append(Chem.MolFromSmiles(smile))
+
+featurizer = dc.feat.CircularFingerprint(size=1024, radius=2)
+ecfp = featurizer.featurize(SIMLES)
+np.set_printoptions(threshold=np.inf)
+print(ecfp)
+print(len(ecfp))
+
+file = open('分子指纹.txt', 'w',encoding='UTF-8')
+for i in range (len (ecfp)):
+    file.write(str(ecfp[i])+'\n')
+file.close()
